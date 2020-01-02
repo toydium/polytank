@@ -18,10 +18,10 @@ const pluginsPath = "/var/tmp/polytank/plugins.so"
 type Service struct {
 	resultCh chan *pb.Result
 	cancelCh chan struct{}
-	runFunc  runFunction
+	runFunc  RunFunction
 }
 
-type runFunction func(timeout uint32, ch chan *pb.Result) error
+type RunFunction func(timeout uint32, ch chan *pb.Result) error
 
 func NewService() pb.WorkerServer {
 	return &Service{
@@ -43,9 +43,9 @@ func (s Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "cannot create symbol from plugins")
 	}
-	runFunc, ok := symbol.(runFunction)
+	runFunc, ok := symbol.(RunFunction)
 	if !ok {
-		return nil, status.New(codes.InvalidArgument, "cannot assertion symbol to runFunction").Err()
+		return nil, status.New(codes.InvalidArgument, "cannot assertion symbol to RunFunction").Err()
 	}
 	s.runFunc = runFunc
 	return &pb.DistributeResponse{}, nil
