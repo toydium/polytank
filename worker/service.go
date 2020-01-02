@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"plugin"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,23 +17,23 @@ import (
 
 const pluginsDir = "/var/tmp/polytank"
 
-type Service struct {
-	resultCh chan *pb.Result
-	cancelCh chan struct{}
-	runFunc  RunFunction
-}
+type runFunction func(timeout uint32, ch chan []string) error
 
-type RunFunction func(timeout uint32, ch chan *pb.Result) error
+type Service struct {
+	resultCh chan []string
+	cancelCh chan struct{}
+	runFunc  runFunction
+}
 
 func NewService() pb.WorkerServer {
 	return &Service{
-		resultCh: make(chan *pb.Result, 10000),
+		resultCh: make(chan []string, 10000),
 		cancelCh: make(chan struct{}, 1),
 		runFunc:  nil,
 	}
 }
 
-func (s Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb.DistributeResponse, error) {
+func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb.DistributeResponse, error) {
 	if err := s.storePlugins(req.Plugin); err != nil {
 		return nil, err
 	}
@@ -44,15 +45,15 @@ func (s Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "cannot create symbol from plugins")
 	}
-	runFunc, ok := symbol.(RunFunction)
+	runFunc, ok := symbol.(func(timeout uint32, ch chan []string) error)
 	if !ok {
-		return nil, status.New(codes.InvalidArgument, "cannot assertion symbol to RunFunction").Err()
+		return nil, status.Error(codes.InvalidArgument, "cannot assertion symbol to runFunction")
 	}
 	s.runFunc = runFunc
 	return &pb.DistributeResponse{}, nil
 }
 
-func (s Service) storePlugins(b []byte) error {
+func (s *Service) storePlugins(b []byte) error {
 	st := status.New(codes.InvalidArgument, "cannot store plugins")
 
 	if err := os.MkdirAll(pluginsDir, 0777); err != nil {
@@ -71,9 +72,9 @@ func (s Service) storePlugins(b []byte) error {
 	return nil
 }
 
-func (s Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*pb.ExecuteResponse, error) {
+func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*pb.ExecuteResponse, error) {
 	if s.runFunc == nil {
-		return nil, status.New(codes.InvalidArgument, "please distribute first").Err()
+		return nil, status.Error(codes.InvalidArgument, "please distribute first")
 	}
 
 	maxCount := req.GetCount()
@@ -88,7 +89,7 @@ func (s Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*pb.Execu
 	return &pb.ExecuteResponse{}, nil
 }
 
-func (s Service) threadForTimeout(req *pb.ExecuteRequest, maxSeconds uint32) {
+func (s *Service) threadForTimeout(req *pb.ExecuteRequest, maxSeconds uint32) {
 	wg := &sync.WaitGroup{}
 	concurrentCh := make(chan struct{}, req.Concurrency)
 	timeoutCh := time.After(time.Duration(maxSeconds) * time.Second)
@@ -114,7 +115,7 @@ ForLoop:
 	close(s.resultCh)
 }
 
-func (s Service) threadForCount(req *pb.ExecuteRequest, maxCount uint32) {
+func (s *Service) threadForCount(req *pb.ExecuteRequest, maxCount uint32) {
 	wg := &sync.WaitGroup{}
 	concurrentCh := make(chan struct{}, req.Concurrency)
 
@@ -137,7 +138,7 @@ ForLoop:
 	close(s.resultCh)
 }
 
-func (s Service) goroutineMethod(timeoutSec uint32, ch chan struct{}) {
+func (s *Service) goroutineMethod(timeoutSec uint32, ch chan struct{}) {
 	defer func() {
 		<-ch
 	}()
@@ -146,7 +147,24 @@ func (s Service) goroutineMethod(timeoutSec uint32, ch chan struct{}) {
 	}
 }
 
-func (s Service) Wait(req *pb.WaitRequest, server pb.Worker_WaitServer) error {
+func (s *Service) sliceToResult(slice []string) (*pb.Result, error) {
+	startUsec, err := strconv.ParseInt(slice[2], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	elapsedUsec, err := strconv.ParseInt(slice[3], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.Result{
+		RpcName:            slice[0],
+		IsSuccess:          slice[1] == "true",
+		StartTimestampUsec: startUsec,
+		ElapsedTimeUsec:    elapsedUsec,
+	}, nil
+}
+
+func (s *Service) Wait(req *pb.WaitRequest, server pb.Worker_WaitServer) error {
 	ticker := time.NewTicker(1 * time.Second)
 
 	var results []*pb.Result
@@ -162,9 +180,14 @@ ForLoop:
 				return sendErr
 			}
 			results = []*pb.Result{}
-		case res, ok := <-s.resultCh:
+		case slice, ok := <-s.resultCh:
 			if !ok {
 				break ForLoop
+			}
+			res, err := s.sliceToResult(slice)
+			if err != nil {
+				log.Printf("result convert err: %+v", err)
+				continue
 			}
 			results = append(results, res)
 		}
@@ -179,7 +202,7 @@ ForLoop:
 	return nil
 }
 
-func (s Service) Stop(context.Context, *pb.StopRequest) (*pb.StopResponse, error) {
+func (s *Service) Stop(context.Context, *pb.StopRequest) (*pb.StopResponse, error) {
 	s.cancelCh <- struct{}{}
 	close(s.resultCh)
 	return &pb.StopResponse{}, nil

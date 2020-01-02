@@ -139,6 +139,7 @@ func execStandalone(port, pluginPath, configPath string) {
 		os.Exit(1)
 	}
 
+	start := time.Now()
 	if _, err := client.Execute(ctx, req); err != nil {
 		panic(err)
 	}
@@ -161,9 +162,22 @@ func execStandalone(port, pluginPath, configPath string) {
 			break
 		}
 	}
+	end := time.Now()
 
+	totalElapsed := uint64(0)
+	failureCount := 0
 	for _, r := range results {
+		totalElapsed += uint64(r.ElapsedTimeUsec)
+		if !r.IsSuccess {
+			failureCount++
+		}
 		log.Print(r.String())
 	}
-	log.Printf("end")
+
+	length := len(results)
+	elapsedTime := end.Unix() - start.Unix()
+	log.Printf("total_count: %d", length)
+	log.Printf("elapsed_sec: %d", elapsedTime)
+	log.Printf("failure_count: %d", failureCount)
+	log.Printf("rps: %f", float64(length)/float64(elapsedTime))
 }
