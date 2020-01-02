@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"plugin"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const pluginsPath = "/var/tmp/polytank/plugins.so"
+const pluginsDir = "/var/tmp/polytank"
 
 type Service struct {
 	resultCh chan *pb.Result
@@ -35,9 +36,9 @@ func (s Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb
 	if err := s.storePlugins(req.Plugin); err != nil {
 		return nil, err
 	}
-	p, err := plugin.Open(pluginsPath)
+	p, err := plugin.Open(filepath.Join(pluginsDir, "plugin.so"))
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "cannot open plugins")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot open plugins: %+v", err)
 	}
 	symbol, err := p.Lookup("Run")
 	if err != nil {
@@ -52,8 +53,12 @@ func (s Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb
 }
 
 func (s Service) storePlugins(b []byte) error {
-	f, err := os.Create(pluginsPath)
 	st := status.New(codes.InvalidArgument, "cannot store plugins")
+
+	if err := os.MkdirAll(pluginsDir, 0777); err != nil {
+		return st.Err()
+	}
+	f, err := os.Create(filepath.Join(pluginsDir, "plugin.so"))
 	if err != nil {
 		return st.Err()
 	}

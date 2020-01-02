@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/toydium/polytank/config"
 	"github.com/toydium/polytank/pb"
@@ -27,7 +28,7 @@ func main() {
 	flag.StringVar(&pluginPath, "plugin", "", "plugin(.so) path")
 	flag.StringVar(&configPath, "config", "", "config(.yml) path")
 	flag.StringVar(&port, "port", "33333", "listen port number")
-	flag.StringVar(&mode, "mode", "parent", "exec mode [worker|controller|standalone]")
+	flag.StringVar(&mode, "mode", "standalone", "exec mode [worker|controller|standalone]")
 	flag.Parse()
 
 	log.Printf("exec mode: %s", mode)
@@ -66,7 +67,7 @@ func execWorker(port string) {
 
 func listenWorkerServer(port string) (net.Listener, *grpc.Server, error) {
 	workerService := worker.NewService()
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.MaxRecvMsgSize(1024 * 1024 * 100))
 	pb.RegisterWorkerServer(grpcServer, workerService)
 
 	addr := ":" + port
@@ -104,6 +105,8 @@ func execStandalone(port, pluginPath, configPath string) {
 		os.Exit(1)
 	}
 	defer conn.Close()
+
+	time.Sleep(time.Second * 1)
 
 	conf, err := config.Load(configPath)
 	if err != nil {
