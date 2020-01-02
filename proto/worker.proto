@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package pb;
+
+service Worker {
+    rpc Distribute(DistributeRequest) returns (DistributeResponse);
+    rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+    rpc Wait(WaitRequest) returns (stream WaitResponse);
+    rpc Stop(StopRequest) returns (StopResponse);
+}
+
+message DistributeRequest {
+    bytes plugin = 1;
+}
+
+message DistributeResponse {
+}
+
+message ExecuteRequest {
+    uint32 index = 1;
+    uint32 concurrency = 2;
+    uint32 timeout_seconds = 3;
+    oneof max {
+        uint32 count = 4;
+        uint32 seconds = 5;
+    }
+}
+
+message ExecuteResponse {
+}
+
+message WaitRequest {
+}
+
+message Result {
+    string rpc_name = 1;
+    uint32 status_code = 2;
+    bool is_success = 3;
+    int64 start_timestamp_usec = 4;
+    int64 elapsed_time_usec = 5;
+}
+
+message WaitResponse {
+    repeated Result results = 1;
+    bool is_continue = 2;
+}
+
+message StopRequest {
+}
+
+message StopResponse {
+}
