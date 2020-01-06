@@ -8,8 +8,10 @@ import (
 	"plugin"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/toydium/polytank/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,23 +19,35 @@ import (
 
 const pluginsDir = "/var/tmp/polytank"
 
-type runFunction func(timeout uint32, ch chan []string) error
+type runFunction func(index, timeout uint32, ch chan []string, exMap map[string]string) error
+
+type counter uint32
+
+func (c *counter) Increment() uint32 {
+	return atomic.AddUint32((*uint32)(c), 1)
+}
+func (c *counter) Load() uint32 {
+	return atomic.LoadUint32((*uint32)(c))
+}
 
 type Service struct {
 	resultCh chan []string
 	cancelCh chan struct{}
 	runFunc  runFunction
+	counter  counter
 }
 
 func NewService() pb.WorkerServer {
+	var c counter
 	return &Service{
 		resultCh: make(chan []string, 10000),
 		cancelCh: make(chan struct{}, 1),
 		runFunc:  nil,
+		counter:  c,
 	}
 }
 
-func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*pb.DistributeResponse, error) {
+func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*empty.Empty, error) {
 	if err := s.storePlugins(req.Plugin); err != nil {
 		return nil, err
 	}
@@ -45,12 +59,12 @@ func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*p
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "cannot create symbol from plugins")
 	}
-	runFunc, ok := symbol.(func(timeout uint32, ch chan []string) error)
+	runFunc, ok := symbol.(func(index, timeout uint32, ch chan []string, exMap map[string]string) error)
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "cannot assertion symbol to runFunction")
 	}
 	s.runFunc = runFunc
-	return &pb.DistributeResponse{}, nil
+	return &empty.Empty{}, nil
 }
 
 func (s *Service) storePlugins(b []byte) error {
@@ -72,7 +86,7 @@ func (s *Service) storePlugins(b []byte) error {
 	return nil
 }
 
-func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*pb.ExecuteResponse, error) {
+func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*empty.Empty, error) {
 	if s.runFunc == nil {
 		return nil, status.Error(codes.InvalidArgument, "please distribute first")
 	}
@@ -86,7 +100,7 @@ func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*pb.Exec
 		go s.threadForCount(req, maxCount)
 	}
 
-	return &pb.ExecuteResponse{}, nil
+	return &empty.Empty{}, nil
 }
 
 func (s *Service) threadForTimeout(req *pb.ExecuteRequest, maxSeconds uint32) {
@@ -106,7 +120,7 @@ ForLoop:
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				s.goroutineMethod(req.TimeoutSeconds, concurrentCh)
+				s.goroutineMethod(req, concurrentCh)
 			}()
 		}
 	}
@@ -129,7 +143,7 @@ ForLoop:
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				s.goroutineMethod(req.TimeoutSeconds, concurrentCh)
+				s.goroutineMethod(req, concurrentCh)
 			}()
 		}
 	}
@@ -138,11 +152,12 @@ ForLoop:
 	close(s.resultCh)
 }
 
-func (s *Service) goroutineMethod(timeoutSec uint32, ch chan struct{}) {
+func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
 	defer func() {
 		<-ch
 	}()
-	if err := s.runFunc(timeoutSec, s.resultCh); err != nil {
+	c := s.counter.Increment()
+	if err := s.runFunc(c, req.TimeoutSeconds, s.resultCh, req.ExMap); err != nil {
 		log.Printf("runFunc error: %+v", err)
 	}
 }
@@ -164,7 +179,7 @@ func (s *Service) sliceToResult(slice []string) (*pb.Result, error) {
 	}, nil
 }
 
-func (s *Service) Wait(req *pb.WaitRequest, server pb.Worker_WaitServer) error {
+func (s *Service) Wait(_ *empty.Empty, server pb.Worker_WaitServer) error {
 	ticker := time.NewTicker(1 * time.Second)
 
 	var results []*pb.Result
@@ -176,6 +191,7 @@ ForLoop:
 			if err := server.Send(&pb.WaitResponse{
 				Results:    results,
 				IsContinue: true,
+				Current:    s.counter.Load(),
 			}); err != nil {
 				return sendErr
 			}
@@ -196,14 +212,15 @@ ForLoop:
 	if err := server.Send(&pb.WaitResponse{
 		Results:    results,
 		IsContinue: false,
+		Current:    s.counter.Load(),
 	}); err != nil {
 		return sendErr
 	}
 	return nil
 }
 
-func (s *Service) Stop(context.Context, *pb.StopRequest) (*pb.StopResponse, error) {
+func (s *Service) Stop(ctx context.Context, _ *empty.Empty) (*empty.Empty, error) {
 	s.cancelCh <- struct{}{}
 	close(s.resultCh)
-	return &pb.StopResponse{}, nil
+	return &empty.Empty{}, nil
 }

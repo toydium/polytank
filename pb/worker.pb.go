@@ -9,6 +9,7 @@ import (
 	math "math"
 
 	proto "github.com/golang/protobuf/proto"
+	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -64,45 +65,14 @@ func (m *DistributeRequest) GetPlugin() []byte {
 	return nil
 }
 
-type DistributeResponse struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
-
-func (m *DistributeResponse) Reset()         { *m = DistributeResponse{} }
-func (m *DistributeResponse) String() string { return proto.CompactTextString(m) }
-func (*DistributeResponse) ProtoMessage()    {}
-func (*DistributeResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{1}
-}
-
-func (m *DistributeResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_DistributeResponse.Unmarshal(m, b)
-}
-func (m *DistributeResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_DistributeResponse.Marshal(b, m, deterministic)
-}
-func (m *DistributeResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DistributeResponse.Merge(m, src)
-}
-func (m *DistributeResponse) XXX_Size() int {
-	return xxx_messageInfo_DistributeResponse.Size(m)
-}
-func (m *DistributeResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_DistributeResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DistributeResponse proto.InternalMessageInfo
-
 type ExecuteRequest struct {
-	Index          uint32 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
-	Concurrency    uint32 `protobuf:"varint,2,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
-	TimeoutSeconds uint32 `protobuf:"varint,3,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	Concurrency    uint32 `protobuf:"varint,1,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	TimeoutSeconds uint32 `protobuf:"varint,2,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	// Types that are valid to be assigned to Max:
 	//	*ExecuteRequest_Count
 	//	*ExecuteRequest_Seconds
 	Max                  isExecuteRequest_Max `protobuf_oneof:"max"`
+	ExMap                map[string]string    `protobuf:"bytes,5,rep,name=ex_map,json=exMap,proto3" json:"ex_map,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
 	XXX_unrecognized     []byte               `json:"-"`
 	XXX_sizecache        int32                `json:"-"`
@@ -112,7 +82,7 @@ func (m *ExecuteRequest) Reset()         { *m = ExecuteRequest{} }
 func (m *ExecuteRequest) String() string { return proto.CompactTextString(m) }
 func (*ExecuteRequest) ProtoMessage()    {}
 func (*ExecuteRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{2}
+	return fileDescriptor_e4ff6184b07e587a, []int{1}
 }
 
 func (m *ExecuteRequest) XXX_Unmarshal(b []byte) error {
@@ -133,13 +103,6 @@ func (m *ExecuteRequest) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ExecuteRequest proto.InternalMessageInfo
 
-func (m *ExecuteRequest) GetIndex() uint32 {
-	if m != nil {
-		return m.Index
-	}
-	return 0
-}
-
 func (m *ExecuteRequest) GetConcurrency() uint32 {
 	if m != nil {
 		return m.Concurrency
@@ -159,11 +122,11 @@ type isExecuteRequest_Max interface {
 }
 
 type ExecuteRequest_Count struct {
-	Count uint32 `protobuf:"varint,4,opt,name=count,proto3,oneof"`
+	Count uint32 `protobuf:"varint,3,opt,name=count,proto3,oneof"`
 }
 
 type ExecuteRequest_Seconds struct {
-	Seconds uint32 `protobuf:"varint,5,opt,name=seconds,proto3,oneof"`
+	Seconds uint32 `protobuf:"varint,4,opt,name=seconds,proto3,oneof"`
 }
 
 func (*ExecuteRequest_Count) isExecuteRequest_Max() {}
@@ -191,6 +154,13 @@ func (m *ExecuteRequest) GetSeconds() uint32 {
 	return 0
 }
 
+func (m *ExecuteRequest) GetExMap() map[string]string {
+	if m != nil {
+		return m.ExMap
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*ExecuteRequest) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
@@ -198,68 +168,6 @@ func (*ExecuteRequest) XXX_OneofWrappers() []interface{} {
 		(*ExecuteRequest_Seconds)(nil),
 	}
 }
-
-type ExecuteResponse struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
-
-func (m *ExecuteResponse) Reset()         { *m = ExecuteResponse{} }
-func (m *ExecuteResponse) String() string { return proto.CompactTextString(m) }
-func (*ExecuteResponse) ProtoMessage()    {}
-func (*ExecuteResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{3}
-}
-
-func (m *ExecuteResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_ExecuteResponse.Unmarshal(m, b)
-}
-func (m *ExecuteResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_ExecuteResponse.Marshal(b, m, deterministic)
-}
-func (m *ExecuteResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ExecuteResponse.Merge(m, src)
-}
-func (m *ExecuteResponse) XXX_Size() int {
-	return xxx_messageInfo_ExecuteResponse.Size(m)
-}
-func (m *ExecuteResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ExecuteResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ExecuteResponse proto.InternalMessageInfo
-
-type WaitRequest struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
-
-func (m *WaitRequest) Reset()         { *m = WaitRequest{} }
-func (m *WaitRequest) String() string { return proto.CompactTextString(m) }
-func (*WaitRequest) ProtoMessage()    {}
-func (*WaitRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{4}
-}
-
-func (m *WaitRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_WaitRequest.Unmarshal(m, b)
-}
-func (m *WaitRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_WaitRequest.Marshal(b, m, deterministic)
-}
-func (m *WaitRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_WaitRequest.Merge(m, src)
-}
-func (m *WaitRequest) XXX_Size() int {
-	return xxx_messageInfo_WaitRequest.Size(m)
-}
-func (m *WaitRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_WaitRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_WaitRequest proto.InternalMessageInfo
 
 type Result struct {
 	RpcName              string   `protobuf:"bytes,1,opt,name=rpc_name,json=rpcName,proto3" json:"rpc_name,omitempty"`
@@ -275,7 +183,7 @@ func (m *Result) Reset()         { *m = Result{} }
 func (m *Result) String() string { return proto.CompactTextString(m) }
 func (*Result) ProtoMessage()    {}
 func (*Result) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{5}
+	return fileDescriptor_e4ff6184b07e587a, []int{2}
 }
 
 func (m *Result) XXX_Unmarshal(b []byte) error {
@@ -327,6 +235,7 @@ func (m *Result) GetElapsedTimeUsec() int64 {
 type WaitResponse struct {
 	Results              []*Result `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
 	IsContinue           bool      `protobuf:"varint,2,opt,name=is_continue,json=isContinue,proto3" json:"is_continue,omitempty"`
+	Current              uint32    `protobuf:"varint,3,opt,name=current,proto3" json:"current,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
 	XXX_unrecognized     []byte    `json:"-"`
 	XXX_sizecache        int32     `json:"-"`
@@ -336,7 +245,7 @@ func (m *WaitResponse) Reset()         { *m = WaitResponse{} }
 func (m *WaitResponse) String() string { return proto.CompactTextString(m) }
 func (*WaitResponse) ProtoMessage()    {}
 func (*WaitResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{6}
+	return fileDescriptor_e4ff6184b07e587a, []int{3}
 }
 
 func (m *WaitResponse) XXX_Unmarshal(b []byte) error {
@@ -371,112 +280,56 @@ func (m *WaitResponse) GetIsContinue() bool {
 	return false
 }
 
-type StopRequest struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+func (m *WaitResponse) GetCurrent() uint32 {
+	if m != nil {
+		return m.Current
+	}
+	return 0
 }
-
-func (m *StopRequest) Reset()         { *m = StopRequest{} }
-func (m *StopRequest) String() string { return proto.CompactTextString(m) }
-func (*StopRequest) ProtoMessage()    {}
-func (*StopRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{7}
-}
-
-func (m *StopRequest) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_StopRequest.Unmarshal(m, b)
-}
-func (m *StopRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_StopRequest.Marshal(b, m, deterministic)
-}
-func (m *StopRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_StopRequest.Merge(m, src)
-}
-func (m *StopRequest) XXX_Size() int {
-	return xxx_messageInfo_StopRequest.Size(m)
-}
-func (m *StopRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_StopRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_StopRequest proto.InternalMessageInfo
-
-type StopResponse struct {
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
-}
-
-func (m *StopResponse) Reset()         { *m = StopResponse{} }
-func (m *StopResponse) String() string { return proto.CompactTextString(m) }
-func (*StopResponse) ProtoMessage()    {}
-func (*StopResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e4ff6184b07e587a, []int{8}
-}
-
-func (m *StopResponse) XXX_Unmarshal(b []byte) error {
-	return xxx_messageInfo_StopResponse.Unmarshal(m, b)
-}
-func (m *StopResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	return xxx_messageInfo_StopResponse.Marshal(b, m, deterministic)
-}
-func (m *StopResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_StopResponse.Merge(m, src)
-}
-func (m *StopResponse) XXX_Size() int {
-	return xxx_messageInfo_StopResponse.Size(m)
-}
-func (m *StopResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_StopResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_StopResponse proto.InternalMessageInfo
 
 func init() {
 	proto.RegisterType((*DistributeRequest)(nil), "pb.DistributeRequest")
-	proto.RegisterType((*DistributeResponse)(nil), "pb.DistributeResponse")
 	proto.RegisterType((*ExecuteRequest)(nil), "pb.ExecuteRequest")
-	proto.RegisterType((*ExecuteResponse)(nil), "pb.ExecuteResponse")
-	proto.RegisterType((*WaitRequest)(nil), "pb.WaitRequest")
+	proto.RegisterMapType((map[string]string)(nil), "pb.ExecuteRequest.ExMapEntry")
 	proto.RegisterType((*Result)(nil), "pb.Result")
 	proto.RegisterType((*WaitResponse)(nil), "pb.WaitResponse")
-	proto.RegisterType((*StopRequest)(nil), "pb.StopRequest")
-	proto.RegisterType((*StopResponse)(nil), "pb.StopResponse")
 }
 
 func init() { proto.RegisterFile("worker.proto", fileDescriptor_e4ff6184b07e587a) }
 
 var fileDescriptor_e4ff6184b07e587a = []byte{
-	// 447 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x53, 0xcb, 0x6e, 0x13, 0x31,
-	0x14, 0x65, 0x9a, 0x57, 0x7b, 0x93, 0x36, 0xe4, 0x12, 0xa2, 0x21, 0x12, 0x22, 0x1a, 0x21, 0x51,
-	0xa8, 0x14, 0x55, 0x61, 0xc9, 0x8e, 0x87, 0xc4, 0x8a, 0xc5, 0x84, 0xaa, 0xcb, 0xd1, 0xc4, 0xb1,
-	0x90, 0x45, 0xc6, 0x36, 0xbe, 0xb6, 0x08, 0x7f, 0xc3, 0x07, 0xf0, 0x33, 0xfc, 0x11, 0xf2, 0x63,
-	0xe8, 0x14, 0x96, 0xf7, 0x3c, 0xc6, 0xe7, 0xd8, 0x77, 0x60, 0xf2, 0x5d, 0x99, 0xaf, 0xdc, 0xac,
-	0xb5, 0x51, 0x56, 0xe1, 0x89, 0xde, 0x15, 0x57, 0x30, 0x7b, 0x2f, 0xc8, 0x1a, 0xb1, 0x73, 0x96,
-	0x97, 0xfc, 0x9b, 0xe3, 0x64, 0x71, 0x01, 0x43, 0x7d, 0x70, 0x5f, 0x84, 0xcc, 0xb3, 0x55, 0x76,
-	0x39, 0x29, 0xd3, 0x54, 0xcc, 0x01, 0xbb, 0x62, 0xd2, 0x4a, 0x12, 0x2f, 0x7e, 0x65, 0x70, 0xf1,
-	0xe1, 0xc8, 0x59, 0xe7, 0x03, 0x73, 0x18, 0x08, 0xb9, 0xe7, 0xc7, 0xe0, 0x3f, 0x2f, 0xe3, 0x80,
-	0x2b, 0x18, 0x33, 0x25, 0x99, 0x33, 0x86, 0x4b, 0xf6, 0x23, 0x3f, 0x09, 0x5c, 0x17, 0xc2, 0x17,
-	0x30, 0xb5, 0xa2, 0xe1, 0xca, 0xd9, 0x8a, 0x38, 0x53, 0x72, 0x4f, 0x79, 0x2f, 0xa8, 0x2e, 0x12,
-	0xbc, 0x8d, 0x28, 0x2e, 0x60, 0xc0, 0x94, 0x93, 0x36, 0xef, 0x7b, 0xfa, 0xe3, 0x83, 0x32, 0x8e,
-	0xb8, 0x84, 0x51, 0x6b, 0x1c, 0x24, 0xa6, 0x05, 0xde, 0x0e, 0xa0, 0xd7, 0xd4, 0xc7, 0x62, 0x06,
-	0xd3, 0xbf, 0x69, 0x53, 0x83, 0x73, 0x18, 0xdf, 0xd6, 0xc2, 0xa6, 0xf4, 0xc5, 0xcf, 0x0c, 0x86,
-	0x25, 0x27, 0x77, 0xb0, 0xf8, 0x04, 0x4e, 0x8d, 0x66, 0x95, 0xac, 0x1b, 0x1e, 0xba, 0x9c, 0x95,
-	0x23, 0xa3, 0xd9, 0xa7, 0xba, 0xe1, 0xf8, 0x14, 0x40, 0x50, 0x45, 0x8e, 0x31, 0x4e, 0x14, 0xca,
-	0x9c, 0x96, 0x67, 0x82, 0xb6, 0x11, 0xc0, 0x6b, 0x98, 0x93, 0xad, 0x8d, 0xad, 0x7c, 0x72, 0xb2,
-	0x75, 0xa3, 0x2b, 0x47, 0x9c, 0x85, 0x3e, 0xbd, 0x12, 0x03, 0xf7, 0xb9, 0xa5, 0x6e, 0x88, 0x33,
-	0x7c, 0x05, 0x33, 0x7e, 0xa8, 0x35, 0xf1, 0x7d, 0xf0, 0x44, 0x79, 0x3f, 0xc8, 0xa7, 0x89, 0xf0,
-	0x06, 0xaf, 0x2d, 0x6e, 0x60, 0x12, 0x13, 0xc7, 0x06, 0xf8, 0x1c, 0x46, 0x26, 0x24, 0xa6, 0x3c,
-	0x5b, 0xf5, 0x2e, 0xc7, 0x1b, 0x58, 0xeb, 0xdd, 0x3a, 0x96, 0x28, 0x5b, 0x0a, 0x9f, 0xc1, 0x58,
-	0x50, 0xc5, 0x94, 0xb4, 0x42, 0x3a, 0x9e, 0x32, 0x83, 0xa0, 0x77, 0x09, 0xf1, 0x17, 0xb1, 0xb5,
-	0x4a, 0xb7, 0x17, 0x71, 0x01, 0x93, 0x38, 0xc6, 0x53, 0x36, 0xbf, 0x33, 0x18, 0xde, 0x86, 0x0d,
-	0xc2, 0x37, 0x00, 0x77, 0xab, 0x80, 0x8f, 0xfd, 0x69, 0xff, 0xed, 0xd1, 0x72, 0xf1, 0x2f, 0x9c,
-	0xd2, 0x6e, 0x60, 0x94, 0x9e, 0x00, 0xd1, 0x4b, 0xee, 0x6f, 0xcf, 0xf2, 0xd1, 0x3d, 0x2c, 0x79,
-	0xae, 0xa0, 0xef, 0x1b, 0xe3, 0xd4, 0x93, 0x9d, 0xd7, 0x5a, 0x3e, 0xbc, 0x03, 0xa2, 0xf4, 0x3a,
-	0xc3, 0x97, 0xd0, 0xf7, 0xc1, 0xa3, 0xb8, 0xd3, 0x28, 0x8a, 0xbb, 0x9d, 0x76, 0xc3, 0xf0, 0x2f,
-	0xbc, 0xfe, 0x13, 0x00, 0x00, 0xff, 0xff, 0x6a, 0xb3, 0x85, 0x2c, 0x1b, 0x03, 0x00, 0x00,
+	// 489 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x52, 0xdb, 0x6e, 0xd3, 0x40,
+	0x10, 0xc5, 0xb9, 0x67, 0x12, 0x7a, 0x19, 0x95, 0xc8, 0x04, 0x55, 0x44, 0x11, 0x12, 0x15, 0x48,
+	0x6e, 0x15, 0x2e, 0xaa, 0xe0, 0x0d, 0x88, 0xc4, 0x0b, 0x3c, 0x6c, 0x40, 0x7d, 0xb4, 0x9c, 0xed,
+	0x10, 0x59, 0x8d, 0xbd, 0xcb, 0x5e, 0x20, 0xf9, 0x01, 0xbe, 0x83, 0xcf, 0xe3, 0x33, 0xd0, 0xee,
+	0xda, 0x6a, 0xaa, 0x2a, 0x6f, 0x9e, 0x73, 0xce, 0xac, 0xe7, 0xcc, 0x1c, 0x18, 0xfe, 0x16, 0xea,
+	0x86, 0x54, 0x22, 0x95, 0x30, 0x02, 0x1b, 0x72, 0x39, 0x7e, 0xb2, 0x12, 0x62, 0xb5, 0xa6, 0x73,
+	0x8f, 0x2c, 0xed, 0x8f, 0x73, 0x2a, 0xa4, 0xd9, 0x06, 0xc1, 0xf4, 0x25, 0x1c, 0x7f, 0xca, 0xb5,
+	0x51, 0xf9, 0xd2, 0x1a, 0x62, 0xf4, 0xd3, 0x92, 0x36, 0x38, 0x82, 0x8e, 0x5c, 0xdb, 0x55, 0x5e,
+	0xc6, 0xd1, 0x24, 0x3a, 0x1b, 0xb2, 0xaa, 0x9a, 0xfe, 0x69, 0xc0, 0xc1, 0x7c, 0x43, 0x7c, 0x47,
+	0x3a, 0x81, 0x01, 0x17, 0x25, 0xb7, 0x4a, 0x51, 0xc9, 0xb7, 0x5e, 0xff, 0x90, 0xed, 0x42, 0xf8,
+	0x1c, 0x0e, 0x4d, 0x5e, 0x90, 0xb0, 0x26, 0xd5, 0xc4, 0x45, 0x79, 0xad, 0xe3, 0x86, 0x57, 0x1d,
+	0x54, 0xf0, 0x22, 0xa0, 0x38, 0x82, 0x36, 0x17, 0xb6, 0x34, 0x71, 0xd3, 0xd1, 0x9f, 0x1f, 0xb0,
+	0x50, 0xe2, 0x18, 0xba, 0x75, 0x63, 0xab, 0x62, 0x6a, 0x00, 0x5f, 0x43, 0x87, 0x36, 0x69, 0x91,
+	0xc9, 0xb8, 0x3d, 0x69, 0x9e, 0x0d, 0x66, 0xa7, 0x89, 0x5c, 0x26, 0x77, 0x47, 0x4c, 0xe6, 0x9b,
+	0x2f, 0x99, 0x9c, 0x97, 0x46, 0x6d, 0x59, 0x9b, 0xdc, 0xf7, 0xf8, 0x12, 0xe0, 0x16, 0xc4, 0x23,
+	0x68, 0xde, 0x50, 0x18, 0xbd, 0xcf, 0xdc, 0x27, 0x9e, 0x40, 0xfb, 0x57, 0xb6, 0xb6, 0xe4, 0x07,
+	0xed, 0xb3, 0x50, 0xbc, 0x6b, 0x5c, 0x46, 0x1f, 0xda, 0xd0, 0x2c, 0xb2, 0xcd, 0xf4, 0x6f, 0x04,
+	0x1d, 0x46, 0xda, 0xae, 0x0d, 0x3e, 0x86, 0x9e, 0x92, 0x3c, 0x2d, 0xb3, 0x82, 0xaa, 0x27, 0xba,
+	0x4a, 0xf2, 0xaf, 0x59, 0x41, 0x78, 0x0a, 0x90, 0xeb, 0x54, 0x5b, 0xce, 0x49, 0x07, 0xd3, 0x3d,
+	0xd6, 0xcf, 0xf5, 0x22, 0x00, 0x78, 0x01, 0x27, 0xda, 0x64, 0xca, 0xa4, 0x6e, 0x0f, 0xda, 0x64,
+	0x85, 0x4c, 0xad, 0x26, 0xee, 0xed, 0x37, 0x19, 0x7a, 0xee, 0x5b, 0x4d, 0x7d, 0xd7, 0xc4, 0xf1,
+	0x05, 0x1c, 0xd3, 0x3a, 0x93, 0x9a, 0xae, 0x7d, 0x4f, 0x90, 0xb7, 0xbc, 0xfc, 0xb0, 0x22, 0x5c,
+	0x83, 0xd3, 0x4e, 0x05, 0x0c, 0xaf, 0xb2, 0xdc, 0x30, 0xd2, 0x52, 0x94, 0x9a, 0xf0, 0x19, 0x74,
+	0x95, 0x9f, 0x58, 0xc7, 0x91, 0x5f, 0x15, 0xb8, 0x55, 0x05, 0x13, 0xac, 0xa6, 0xf0, 0x29, 0x0c,
+	0x72, 0x9d, 0x72, 0x51, 0x9a, 0xbc, 0xac, 0xfc, 0xf7, 0x18, 0xe4, 0xfa, 0x63, 0x85, 0x60, 0x0c,
+	0xdd, 0x70, 0xd9, 0xea, 0x4c, 0xac, 0x2e, 0x67, 0xff, 0x22, 0xe8, 0x5c, 0xf9, 0xec, 0xe1, 0x7b,
+	0x80, 0xdb, 0x50, 0xe1, 0x23, 0xf7, 0xa3, 0x7b, 0x21, 0x1b, 0x8f, 0x92, 0x90, 0xcb, 0xa4, 0xce,
+	0x65, 0x32, 0x77, 0xb9, 0xc4, 0x37, 0xd0, 0xad, 0x0e, 0x88, 0x78, 0xff, 0x9a, 0x7b, 0xdb, 0x66,
+	0xd0, 0x72, 0x7e, 0x71, 0x0f, 0x3f, 0x3e, 0x72, 0x6f, 0xed, 0x6e, 0xe4, 0x22, 0xc2, 0xb7, 0xd0,
+	0x5a, 0x18, 0x21, 0xf7, 0xf6, 0xec, 0xc1, 0x97, 0x1d, 0x5f, 0xbf, 0xfa, 0x1f, 0x00, 0x00, 0xff,
+	0xff, 0x97, 0x82, 0xb3, 0xd2, 0x6c, 0x03, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -491,10 +344,10 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type WorkerClient interface {
-	Distribute(ctx context.Context, in *DistributeRequest, opts ...grpc.CallOption) (*DistributeResponse, error)
-	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error)
-	Wait(ctx context.Context, in *WaitRequest, opts ...grpc.CallOption) (Worker_WaitClient, error)
-	Stop(ctx context.Context, in *StopRequest, opts ...grpc.CallOption) (*StopResponse, error)
+	Distribute(ctx context.Context, in *DistributeRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	Wait(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (Worker_WaitClient, error)
+	Stop(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
 }
 
 type workerClient struct {
@@ -505,8 +358,8 @@ func NewWorkerClient(cc *grpc.ClientConn) WorkerClient {
 	return &workerClient{cc}
 }
 
-func (c *workerClient) Distribute(ctx context.Context, in *DistributeRequest, opts ...grpc.CallOption) (*DistributeResponse, error) {
-	out := new(DistributeResponse)
+func (c *workerClient) Distribute(ctx context.Context, in *DistributeRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/pb.Worker/Distribute", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -514,8 +367,8 @@ func (c *workerClient) Distribute(ctx context.Context, in *DistributeRequest, op
 	return out, nil
 }
 
-func (c *workerClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error) {
-	out := new(ExecuteResponse)
+func (c *workerClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/pb.Worker/Execute", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -523,7 +376,7 @@ func (c *workerClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...
 	return out, nil
 }
 
-func (c *workerClient) Wait(ctx context.Context, in *WaitRequest, opts ...grpc.CallOption) (Worker_WaitClient, error) {
+func (c *workerClient) Wait(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (Worker_WaitClient, error) {
 	stream, err := c.cc.NewStream(ctx, &_Worker_serviceDesc.Streams[0], "/pb.Worker/Wait", opts...)
 	if err != nil {
 		return nil, err
@@ -555,8 +408,8 @@ func (x *workerWaitClient) Recv() (*WaitResponse, error) {
 	return m, nil
 }
 
-func (c *workerClient) Stop(ctx context.Context, in *StopRequest, opts ...grpc.CallOption) (*StopResponse, error) {
-	out := new(StopResponse)
+func (c *workerClient) Stop(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, "/pb.Worker/Stop", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -566,26 +419,26 @@ func (c *workerClient) Stop(ctx context.Context, in *StopRequest, opts ...grpc.C
 
 // WorkerServer is the server API for Worker service.
 type WorkerServer interface {
-	Distribute(context.Context, *DistributeRequest) (*DistributeResponse, error)
-	Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error)
-	Wait(*WaitRequest, Worker_WaitServer) error
-	Stop(context.Context, *StopRequest) (*StopResponse, error)
+	Distribute(context.Context, *DistributeRequest) (*empty.Empty, error)
+	Execute(context.Context, *ExecuteRequest) (*empty.Empty, error)
+	Wait(*empty.Empty, Worker_WaitServer) error
+	Stop(context.Context, *empty.Empty) (*empty.Empty, error)
 }
 
 // UnimplementedWorkerServer can be embedded to have forward compatible implementations.
 type UnimplementedWorkerServer struct {
 }
 
-func (*UnimplementedWorkerServer) Distribute(ctx context.Context, req *DistributeRequest) (*DistributeResponse, error) {
+func (*UnimplementedWorkerServer) Distribute(ctx context.Context, req *DistributeRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Distribute not implemented")
 }
-func (*UnimplementedWorkerServer) Execute(ctx context.Context, req *ExecuteRequest) (*ExecuteResponse, error) {
+func (*UnimplementedWorkerServer) Execute(ctx context.Context, req *ExecuteRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Execute not implemented")
 }
-func (*UnimplementedWorkerServer) Wait(req *WaitRequest, srv Worker_WaitServer) error {
+func (*UnimplementedWorkerServer) Wait(req *empty.Empty, srv Worker_WaitServer) error {
 	return status.Errorf(codes.Unimplemented, "method Wait not implemented")
 }
-func (*UnimplementedWorkerServer) Stop(ctx context.Context, req *StopRequest) (*StopResponse, error) {
+func (*UnimplementedWorkerServer) Stop(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Stop not implemented")
 }
 
@@ -630,7 +483,7 @@ func _Worker_Execute_Handler(srv interface{}, ctx context.Context, dec func(inte
 }
 
 func _Worker_Wait_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(WaitRequest)
+	m := new(empty.Empty)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
@@ -651,7 +504,7 @@ func (x *workerWaitServer) Send(m *WaitResponse) error {
 }
 
 func _Worker_Stop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StopRequest)
+	in := new(empty.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -663,7 +516,7 @@ func _Worker_Stop_Handler(srv interface{}, ctx context.Context, dec func(interfa
 		FullMethod: "/pb.Worker/Stop",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(WorkerServer).Stop(ctx, req.(*StopRequest))
+		return srv.(WorkerServer).Stop(ctx, req.(*empty.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }

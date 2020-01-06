@@ -7,16 +7,11 @@ import (
 )
 
 type Config struct {
-	Workers     []*Worker `yaml:"workers"`
-	Concurrency uint32    `yaml:"concurrency"`
-	Timeout     uint32    `yaml:"timeout"`
-	MaxCount    uint32    `yaml:"max_count"`
-	MaxSeconds  uint32    `yaml:"max_seconds"`
-}
-
-type Worker struct {
-	Host string `yaml:"host"`
-	Port string `yaml:"port"`
+	Concurrency uint32            `yaml:"concurrency"`
+	Timeout     uint32            `yaml:"timeout"`
+	MaxCount    uint32            `yaml:"max_count"`
+	MaxSeconds  uint32            `yaml:"max_seconds"`
+	ExMap       map[string]string `yaml:"ex_map"`
 }
 
 func Load(path string) (*Config, error) {

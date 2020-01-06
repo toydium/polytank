@@ -1,35 +1,28 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
+
 package pb;
 
 service Worker {
-    rpc Distribute(DistributeRequest) returns (DistributeResponse);
-    rpc Execute(ExecuteRequest) returns (ExecuteResponse);
-    rpc Wait(WaitRequest) returns (stream WaitResponse);
-    rpc Stop(StopRequest) returns (StopResponse);
+    rpc Distribute(DistributeRequest) returns (google.protobuf.Empty);
+    rpc Execute(ExecuteRequest) returns (google.protobuf.Empty);
+    rpc Wait(google.protobuf.Empty) returns (stream WaitResponse);
+    rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 message DistributeRequest {
     bytes plugin = 1;
 }
 
-message DistributeResponse {
-}
-
 message ExecuteRequest {
-    uint32 index = 1;
-    uint32 concurrency = 2;
-    uint32 timeout_seconds = 3;
+    uint32 concurrency = 1;
+    uint32 timeout_seconds = 2;
     oneof max {
-        uint32 count = 4;
-        uint32 seconds = 5;
+        uint32 count = 3;
+        uint32 seconds = 4;
     }
-}
-
-message ExecuteResponse {
-}
-
-message WaitRequest {
+    map<string, string> ex_map = 5;
 }
 
 message Result {
@@ -42,10 +35,5 @@ message Result {
 message WaitResponse {
     repeated Result results = 1;
     bool is_continue = 2;
-}
-
-message StopRequest {
-}
-
-message StopResponse {
+    uint32 current = 3;
 }

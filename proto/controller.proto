@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "worker.proto";
+
+package pb;
+
+service Controller {
+    rpc Status(google.protobuf.Empty) returns (StatusResponse);
+    rpc AddWorker(AddWorkerRequest) returns (AddWorkerResponse);
+    rpc SetExecuteRequest(ExecuteRequest) returns (google.protobuf.Empty);
+    rpc SetPlugin(DistributeRequest) returns (DistributeAllResponse);
+    rpc Start(StartRequest) returns (StartResponse);
+    rpc Wait(ControllerWaitRequest) returns (stream ControllerWaitResponse);
+    rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message WorkerInfo {
+    string uuid = 1;
+    string address = 2;
+    enum Status {
+        INITIALIZED = 0;
+        DISTRIBUTED = 1;
+        RUNNING = 2;
+        SUCCESS = 3;
+        FAILURE = 4;
+    }
+    Status status = 3;
+}
+
+message StatusResponse {
+    repeated WorkerInfo workers = 1;
+}
+
+message AddWorkerRequest {
+    repeated string addresses = 1;
+}
+
+message AddWorkerResponse {
+    repeated WorkerInfo workers = 1;
+}
+
+message DistributeAllResponse {
+    repeated WorkerInfo workers = 2;
+}
+
+message StartRequest {
+    repeated string uuids = 1;
+}
+
+message StartResponse {
+    repeated WorkerInfo workers = 1;
+}
+
+message ControllerWaitRequest {
+    string uuid = 1;
+}
+
+message ControllerWaitResponse {
+    string uuid = 1;
+    WaitResponse wait_response = 2;
+}

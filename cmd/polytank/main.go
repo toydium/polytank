@@ -12,11 +12,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/toydium/polytank/config"
+	"github.com/toydium/polytank/controller"
 	"github.com/toydium/polytank/pb"
 	"github.com/toydium/polytank/worker"
 	"google.golang.org/grpc"
 )
+
+const maxMsgSize = 1024 * 1024 * 100
 
 func main() {
 	var (
@@ -36,11 +40,27 @@ func main() {
 	case "worker":
 		execWorker(port)
 	case "controller":
+		execController(port)
 	case "standalone":
 		execStandalone(port, pluginPath, configPath)
 	default:
 		flag.Usage()
 	}
+}
+
+func serveAndWaitForSignal(l net.Listener, s *grpc.Server) {
+	go func() {
+		if err := s.Serve(l); err != nil {
+			log.Printf("closed: %+v", err)
+		}
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
+
+	<-sig
+	s.GracefulStop()
+	log.Printf("shutdown gracefully")
 }
 
 func execWorker(port string) {
@@ -51,18 +71,7 @@ func execWorker(port string) {
 	defer l.Close()
 
 	log.Printf("start worker on port %s", port)
-	go func() {
-		if err := s.Serve(l); err != nil {
-			log.Printf("closed: %+v", err)
-		}
-	}()
-
-	sig := make(chan os.Signal)
-	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
-
-	<-sig
-	s.GracefulStop()
-	log.Printf("shutdown gracefully")
+	serveAndWaitForSignal(l, s)
 }
 
 func listenWorkerServer(port string) (net.Listener, *grpc.Server, error) {
@@ -79,6 +88,22 @@ func listenWorkerServer(port string) (net.Listener, *grpc.Server, error) {
 	return l, grpcServer, nil
 }
 
+func execController(port string) {
+	controllerService := controller.NewService()
+	grpcServer := grpc.NewServer(grpc.MaxSendMsgSize(maxMsgSize))
+	pb.RegisterControllerServer(grpcServer, controllerService)
+
+	addr := ":" + port
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+
+	log.Printf("start controller on port %s", port)
+	serveAndWaitForSignal(l, grpcServer)
+}
+
 func execStandalone(port, pluginPath, configPath string) {
 	l, s, err := listenWorkerServer(port)
 	if err != nil {
@@ -87,12 +112,15 @@ func execStandalone(port, pluginPath, configPath string) {
 	defer l.Close()
 
 	log.Printf("start worker on port %s", port)
+	ch := make(chan struct{}, 1)
 	go func() {
+		ch <- struct{}{}
 		if err := s.Serve(l); err != nil {
 			log.Printf("closed: %+v", err)
 		}
 	}()
 
+	<-ch
 	var conn *grpc.ClientConn
 	for i := 0; i < 5; i++ {
 		conn, err = grpc.Dial("127.0.0.1:"+port, grpc.WithInsecure())
@@ -105,8 +133,6 @@ func execStandalone(port, pluginPath, configPath string) {
 		os.Exit(1)
 	}
 	defer conn.Close()
-
-	time.Sleep(time.Second * 1)
 
 	conf, err := config.Load(configPath)
 	if err != nil {
@@ -126,9 +152,9 @@ func execStandalone(port, pluginPath, configPath string) {
 	}
 
 	req := &pb.ExecuteRequest{
-		Index:          0,
 		Concurrency:    conf.Concurrency,
 		TimeoutSeconds: conf.Timeout,
+		ExMap:          conf.ExMap,
 	}
 	if conf.MaxCount > 0 {
 		req.Max = &pb.ExecuteRequest_Count{Count: conf.MaxCount}
@@ -144,7 +170,7 @@ func execStandalone(port, pluginPath, configPath string) {
 		panic(err)
 	}
 
-	stream, err := client.Wait(ctx, &pb.WaitRequest{})
+	stream, err := client.Wait(ctx, &empty.Empty{})
 	if err != nil {
 		panic(err)
 	}
@@ -157,6 +183,7 @@ func execStandalone(port, pluginPath, configPath string) {
 			}
 			panic(err)
 		}
+		log.Printf("current: %d", resp.Current)
 		results = append(results, resp.Results...)
 		if !resp.IsContinue {
 			break
@@ -171,13 +198,13 @@ func execStandalone(port, pluginPath, configPath string) {
 		if !r.IsSuccess {
 			failureCount++
 		}
-		log.Print(r.String())
 	}
 
 	length := len(results)
-	elapsedTime := end.Unix() - start.Unix()
+	elapsedTime := float64(end.UnixNano() - start.UnixNano())
+	elapsedSec := elapsedTime / float64(time.Second)
 	log.Printf("total_count: %d", length)
-	log.Printf("elapsed_sec: %d", elapsedTime)
+	log.Printf("elapsed_sec: %f", elapsedSec)
 	log.Printf("failure_count: %d", failureCount)
-	log.Printf("rps: %f", float64(length)/float64(elapsedTime))
+	log.Printf("rps: %f", float64(length)/elapsedSec)
 }
