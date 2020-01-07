@@ -90,7 +90,7 @@ func listenWorkerServer(port string) (net.Listener, *grpc.Server, error) {
 
 func execController(port string) {
 	controllerService := controller.NewService()
-	grpcServer := grpc.NewServer(grpc.MaxSendMsgSize(maxMsgSize))
+	grpcServer := grpc.NewServer(grpc.MaxSendMsgSize(maxMsgSize), grpc.MaxRecvMsgSize(maxMsgSize))
 	pb.RegisterControllerServer(grpcServer, controllerService)
 
 	addr := ":" + port

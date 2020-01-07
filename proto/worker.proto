@@ -1,39 +1,38 @@
 syntax = "proto3";
+package pb;
 
 import "google/protobuf/empty.proto";
 
-package pb;
-
 service Worker {
-    rpc Distribute(DistributeRequest) returns (google.protobuf.Empty);
-    rpc Execute(ExecuteRequest) returns (google.protobuf.Empty);
-    rpc Wait(google.protobuf.Empty) returns (stream WaitResponse);
-    rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc Distribute(DistributeRequest) returns (google.protobuf.Empty);
+  rpc Execute(ExecuteRequest) returns (google.protobuf.Empty);
+  rpc Wait(google.protobuf.Empty) returns (stream WaitResponse);
+  rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 message DistributeRequest {
-    bytes plugin = 1;
+  bytes plugin = 1;
 }
 
 message ExecuteRequest {
-    uint32 concurrency = 1;
-    uint32 timeout_seconds = 2;
-    oneof max {
-        uint32 count = 3;
-        uint32 seconds = 4;
-    }
-    map<string, string> ex_map = 5;
+  uint32 concurrency = 1;
+  uint32 timeout_seconds = 2;
+  oneof max {
+    uint32 count = 3;
+    uint32 seconds = 4;
+  }
+  map<string, string> ex_map = 5;
 }
 
 message Result {
-    string rpc_name = 1;
-    bool is_success = 2;
-    int64 start_timestamp_usec = 3;
-    int64 elapsed_time_usec = 4;
+  string process_name = 1;
+  bool is_success = 2;
+  int64 start_timestamp_usec = 3;
+  int64 elapsed_time_usec = 4;
 }
 
 message WaitResponse {
-    repeated Result results = 1;
-    bool is_continue = 2;
-    uint32 current = 3;
+  repeated Result results = 1;
+  bool is_continue = 2;
+  uint32 current = 3;
 }

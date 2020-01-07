@@ -4,17 +4,19 @@ services:
   controller: &service_base
     build:
       context: .
+    command: go run cmd/polytank/main.go -mode controller -port 33333
     volumes:
       - ./:/polytank
     networks:
       - envoy-grpc-sample
     ports:
-      - 33330:33330
+      - 33333:33333
     depends_on:
       - worker-1
       - worker-2
   worker-1: &worker
     <<: *service_base
+    command: go run cmd/polytank/main.go -mode worker -port 33333
     ports: []
     depends_on: []
   worker-2:

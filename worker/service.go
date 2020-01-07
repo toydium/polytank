@@ -40,10 +40,8 @@ type Service struct {
 func NewService() pb.WorkerServer {
 	var c counter
 	return &Service{
-		resultCh: make(chan []string, 10000),
-		cancelCh: make(chan struct{}, 1),
-		runFunc:  nil,
-		counter:  c,
+		runFunc: nil,
+		counter: c,
 	}
 }
 
@@ -90,6 +88,9 @@ func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*empty.E
 	if s.runFunc == nil {
 		return nil, status.Error(codes.InvalidArgument, "please distribute first")
 	}
+
+	s.resultCh = make(chan []string, 10000)
+	s.cancelCh = make(chan struct{}, 1)
 
 	maxCount := req.GetCount()
 	maxSeconds := req.GetSeconds()
@@ -163,19 +164,24 @@ func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
 }
 
 func (s *Service) sliceToResult(slice []string) (*pb.Result, error) {
-	startUsec, err := strconv.ParseInt(slice[2], 10, 64)
+	if len(slice) != 4 {
+		return nil, status.Error(codes.InvalidArgument, "cannot parse result")
+	}
+
+	startNanoSec, err := strconv.ParseInt(slice[2], 10, 64)
 	if err != nil {
 		return nil, err
 	}
-	elapsedUsec, err := strconv.ParseInt(slice[3], 10, 64)
+	endNanoSec, err := strconv.ParseInt(slice[3], 10, 64)
 	if err != nil {
 		return nil, err
 	}
+	elapsed := endNanoSec - startNanoSec
 	return &pb.Result{
-		RpcName:            slice[0],
+		ProcessName:        slice[0],
 		IsSuccess:          slice[1] == "true",
-		StartTimestampUsec: startUsec,
-		ElapsedTimeUsec:    elapsedUsec,
+		StartTimestampUsec: startNanoSec,
+		ElapsedTimeUsec:    elapsed,
 	}, nil
 }
 
@@ -188,6 +194,9 @@ ForLoop:
 	for {
 		select {
 		case <-ticker.C:
+			if len(results) == 0 {
+				continue
+			}
 			if err := server.Send(&pb.WaitResponse{
 				Results:    results,
 				IsContinue: true,
@@ -222,5 +231,6 @@ ForLoop:
 func (s *Service) Stop(ctx context.Context, _ *empty.Empty) (*empty.Empty, error) {
 	s.cancelCh <- struct{}{}
 	close(s.resultCh)
+	close(s.cancelCh)
 	return &empty.Empty{}, nil
 }

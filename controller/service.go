@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -54,6 +55,7 @@ func (s *Service) connectWorker(addr string) (*worker, error) {
 		},
 		client: client,
 	}
+	s.addresses[addr] = id
 	s.workers[id] = worker
 
 	return worker, nil
@@ -125,6 +127,9 @@ func (s *Service) Start(ctx context.Context, req *pb.StartRequest) (*pb.StartRes
 	var workers []*pb.WorkerInfo
 	for _, id := range req.Uuids {
 		worker := s.workers[id]
+		if worker == nil {
+			continue
+		}
 		if worker.info.Status == pb.WorkerInfo_RUNNING {
 			continue
 		}
@@ -145,7 +150,7 @@ func (s *Service) Start(ctx context.Context, req *pb.StartRequest) (*pb.StartRes
 func (s *Service) Wait(req *pb.ControllerWaitRequest, stream pb.Controller_WaitServer) error {
 	s.mtx.RLock()
 	worker := s.workers[req.Uuid]
-	s.mtx.Unlock()
+	s.mtx.RUnlock()
 
 	if worker == nil {
 		return status.Errorf(codes.NotFound, "cannot find worker: %s", req.Uuid)
@@ -161,7 +166,6 @@ func (s *Service) Wait(req *pb.ControllerWaitRequest, stream pb.Controller_WaitS
 		return err
 	}
 
-	isFailure := false
 	for {
 		res, err := cStream.Recv()
 		if err != nil {
@@ -171,29 +175,20 @@ func (s *Service) Wait(req *pb.ControllerWaitRequest, stream pb.Controller_WaitS
 			return err
 		}
 
-		for _, r := range res.Results {
-			if !r.IsSuccess {
-				isFailure = true
-			}
-		}
 		if err := stream.Send(&pb.ControllerWaitResponse{
 			Uuid:         req.Uuid,
 			WaitResponse: res,
 		}); err != nil {
 			return err
 		}
+		log.Printf("current: %d", res.Current)
 
 		if !res.IsContinue {
 			break
 		}
 	}
 
-	if isFailure {
-		worker.info.Status = pb.WorkerInfo_FAILURE
-	} else {
-		worker.info.Status = pb.WorkerInfo_SUCCESS
-	}
-
+	worker.info.Status = pb.WorkerInfo_SUCCESS
 	return nil
 }
 
