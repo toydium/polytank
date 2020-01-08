@@ -123,7 +123,7 @@ func main() {
 			log.Print("=====================")
 		}
 		log.Printf("total_count: %d", totalCount)
-		log.Printf("failure_count]: %d", failureCount)
+		log.Printf("failure_count: %d", failureCount)
 		sec := float64(totalUSec) / float64(time.Second)
 		log.Printf("total_elapsed_sec: %f", sec)
 		sort.Slice(unixTimestamps, func(i, j int) bool {
