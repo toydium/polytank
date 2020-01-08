@@ -13,7 +13,7 @@ go get -u github.com/toydium/polytank/cmd/polytank-cli
 2. build binary
 
 ### plugin code example
-```
+```go
 package main
 
 import (
