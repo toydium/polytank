@@ -31,6 +31,10 @@ message Result {
   int64 elapsed_time_usec = 4;
 }
 
+message Results {
+  repeated Result list = 1;
+}
+
 message WaitResponse {
   repeated Result results = 1;
   bool is_continue = 2;

@@ -84,32 +84,24 @@ func main() {
 			}
 			uuids = append(uuids, uuid)
 		}
-		req := &pb.StartRequest{
-			Uuids: uuids,
-		}
-		res, err := c.Start(ctx, req)
+		res, err := c.Start(ctx, &empty.Empty{})
 		if err != nil {
 			panic(err)
 		}
 		log.Print(res.String())
-	case "stop":
-		if _, err := c.Stop(ctx, &empty.Empty{}); err != nil {
-			panic(err)
-		}
-		log.Print("stopped")
-	case "wait":
 		req := &pb.ControllerWaitRequest{
 			Uuid: flag.Arg(1),
 		}
-		res, err := c.Wait(ctx, req)
+		waitRes, err := c.Wait(ctx, req)
 		if err != nil {
 			panic(err)
 		}
 		totalUSec := uint64(0)
 		totalCount := 0
+		failureCount := 0
 		var unixTimestamps []int64
 		for {
-			r, err := res.Recv()
+			r, err := waitRes.Recv()
 			if err != nil {
 				if err == io.EOF {
 					break
@@ -119,17 +111,19 @@ func main() {
 			for _, result := range r.WaitResponse.Results {
 				totalUSec += uint64(result.ElapsedTimeUsec)
 				totalCount++
+				if !result.IsSuccess {
+					failureCount++
+				}
 				unixTimestamps = append(unixTimestamps, result.StartTimestampUsec)
 			}
+			log.Printf("uuid: %s", r.Uuid)
 			log.Printf("current: %d", r.WaitResponse.Current)
 			log.Printf("results: %d", len(r.WaitResponse.Results))
 			log.Printf("is_continue: %v", r.WaitResponse.IsContinue)
 			log.Print("=====================")
-			if !r.WaitResponse.IsContinue {
-				break
-			}
 		}
 		log.Printf("total_count: %d", totalCount)
+		log.Printf("failure_count]: %d", failureCount)
 		sec := float64(totalUSec) / float64(time.Second)
 		log.Printf("total_elapsed_sec: %f", sec)
 		sort.Slice(unixTimestamps, func(i, j int) bool {
@@ -140,6 +134,11 @@ func main() {
 		executedSec := (last - first) / int64(time.Second)
 		log.Printf("executed_sec: %d", executedSec)
 		log.Printf("rps: %f", float64(totalCount)/float64(executedSec))
+	case "stop":
+		if _, err := c.Stop(ctx, &empty.Empty{}); err != nil {
+			panic(err)
+		}
+		log.Print("stopped")
 	default:
 		flag.Usage()
 	}

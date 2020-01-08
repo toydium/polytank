@@ -1,16 +1,15 @@
 syntax = "proto3";
+package pb;
 
 import "google/protobuf/empty.proto";
 import "worker.proto";
-
-package pb;
 
 service Controller {
   rpc Status(google.protobuf.Empty) returns (StatusResponse);
   rpc AddWorker(AddWorkerRequest) returns (AddWorkerResponse);
   rpc SetExecuteRequest(ExecuteRequest) returns (google.protobuf.Empty);
   rpc SetPlugin(DistributeRequest) returns (DistributeAllResponse);
-  rpc Start(StartRequest) returns (StartResponse);
+  rpc Start(google.protobuf.Empty) returns (StartResponse);
   rpc Wait(ControllerWaitRequest) returns (stream ControllerWaitResponse);
   rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
@@ -43,10 +42,6 @@ message AddWorkerResponse {
 
 message DistributeAllResponse {
   repeated WorkerInfo workers = 2;
-}
-
-message StartRequest {
-  repeated string uuids = 1;
 }
 
 message StartResponse {

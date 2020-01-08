@@ -21,6 +21,10 @@ services:
     depends_on: []
   worker-2:
     <<: *worker
+  worker-3:
+    <<: *worker
+  worker-4:
+    <<: *worker
 
 networks:
   envoy-grpc-sample:

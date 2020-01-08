@@ -4,22 +4,21 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"plugin"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/hashicorp/go-plugin"
 	"github.com/toydium/polytank/pb"
+	"github.com/toydium/polytank/runner"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 const pluginsDir = "/var/tmp/polytank"
-
-type runFunction func(index, timeout uint32, ch chan []string, exMap map[string]string) error
 
 type counter uint32
 
@@ -29,68 +28,92 @@ func (c *counter) Increment() uint32 {
 func (c *counter) Load() uint32 {
 	return atomic.LoadUint32((*uint32)(c))
 }
+func (c *counter) Reset() {
+	atomic.StoreUint32((*uint32)(c), 0)
+}
 
 type Service struct {
-	resultCh chan []string
-	cancelCh chan struct{}
-	runFunc  runFunction
-	counter  counter
+	resultCh     chan []*pb.Result
+	cancelCh     chan struct{}
+	counter      counter
+	pluginClient *plugin.Client
+	runner       runner.Runner
 }
 
 func NewService() pb.WorkerServer {
 	var c counter
 	return &Service{
-		runFunc: nil,
 		counter: c,
 	}
 }
 
 func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*empty.Empty, error) {
-	if err := s.storePlugins(req.Plugin); err != nil {
+	if err := s.generatePlugin(req.Plugin); err != nil {
 		return nil, err
 	}
-	p, err := plugin.Open(filepath.Join(pluginsDir, "plugin.so"))
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "cannot open plugins: %+v", err)
-	}
-	symbol, err := p.Lookup("Run")
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "cannot create symbol from plugins")
-	}
-	runFunc, ok := symbol.(func(index, timeout uint32, ch chan []string, exMap map[string]string) error)
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "cannot assertion symbol to runFunction")
-	}
-	s.runFunc = runFunc
 	return &empty.Empty{}, nil
 }
 
-func (s *Service) storePlugins(b []byte) error {
-	st := status.New(codes.InvalidArgument, "cannot store plugins")
-
-	if err := os.MkdirAll(pluginsDir, 0777); err != nil {
-		return st.Err()
+func (s *Service) generatePlugin(b []byte) error {
+	fileErr := func(err error) error {
+		return status.Errorf(codes.InvalidArgument, "cannot create plugin file: %+v", err)
 	}
-	f, err := os.Create(filepath.Join(pluginsDir, "plugin.so"))
+	if err := os.MkdirAll(pluginsDir, 0777); err != nil {
+		return fileErr(err)
+	}
+
+	if s.pluginClient != nil {
+		s.pluginClient.Kill()
+	}
+	pluginPath := filepath.Join(pluginsDir, "plugin")
+	f, err := os.Create(pluginPath)
 	if err != nil {
-		return st.Err()
+		return fileErr(err)
 	}
 	if _, err := f.Write(b); err != nil {
-		return st.Err()
+		return fileErr(err)
 	}
 	if err := f.Close(); err != nil {
-		return st.Err()
+		return fileErr(err)
 	}
+	if err := os.Chmod(pluginPath, 0755); err != nil {
+		return fileErr(err)
+	}
+
+	client := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig: runner.HandshakeConfig(),
+		Plugins: map[string]plugin.Plugin{
+			"runner": &runner.Plugin{},
+		},
+		Cmd: exec.Command(pluginPath),
+	})
+	s.pluginClient = client
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "cannot get client: %+v", err)
+	}
+	raw, err := rpcClient.Dispense("runner")
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "cannot dispense runner: %+v", err)
+	}
+	r, ok := raw.(runner.Runner)
+	if !ok {
+		return status.Error(codes.InvalidArgument, "cannot assertion to plugin")
+	}
+	s.runner = r
+
 	return nil
 }
 
 func (s *Service) Execute(ctx context.Context, req *pb.ExecuteRequest) (*empty.Empty, error) {
-	if s.runFunc == nil {
+	if s.runner == nil {
 		return nil, status.Error(codes.InvalidArgument, "please distribute first")
 	}
 
-	s.resultCh = make(chan []string, 10000)
+	s.resultCh = make(chan []*pb.Result, 1000)
 	s.cancelCh = make(chan struct{}, 1)
+	s.counter.Reset()
 
 	maxCount := req.GetCount()
 	maxSeconds := req.GetSeconds()
@@ -128,6 +151,7 @@ ForLoop:
 
 	wg.Wait()
 	close(s.resultCh)
+	log.Print("end threadForTimeout")
 }
 
 func (s *Service) threadForCount(req *pb.ExecuteRequest, maxCount uint32) {
@@ -151,6 +175,7 @@ ForLoop:
 
 	wg.Wait()
 	close(s.resultCh)
+	log.Print("end threadForCount")
 }
 
 func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
@@ -158,31 +183,12 @@ func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
 		<-ch
 	}()
 	c := s.counter.Increment()
-	if err := s.runFunc(c, req.TimeoutSeconds, s.resultCh, req.ExMap); err != nil {
+	results, err := s.runner.Run(c, req.TimeoutSeconds, req.ExMap)
+	if err != nil {
 		log.Printf("runFunc error: %+v", err)
+		return
 	}
-}
-
-func (s *Service) sliceToResult(slice []string) (*pb.Result, error) {
-	if len(slice) != 4 {
-		return nil, status.Error(codes.InvalidArgument, "cannot parse result")
-	}
-
-	startNanoSec, err := strconv.ParseInt(slice[2], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	endNanoSec, err := strconv.ParseInt(slice[3], 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	elapsed := endNanoSec - startNanoSec
-	return &pb.Result{
-		ProcessName:        slice[0],
-		IsSuccess:          slice[1] == "true",
-		StartTimestampUsec: startNanoSec,
-		ElapsedTimeUsec:    elapsed,
-	}, nil
+	s.resultCh <- results
 }
 
 func (s *Service) Wait(_ *empty.Empty, server pb.Worker_WaitServer) error {
@@ -205,16 +211,11 @@ ForLoop:
 				return sendErr
 			}
 			results = []*pb.Result{}
-		case slice, ok := <-s.resultCh:
+		case res, ok := <-s.resultCh:
 			if !ok {
 				break ForLoop
 			}
-			res, err := s.sliceToResult(slice)
-			if err != nil {
-				log.Printf("result convert err: %+v", err)
-				continue
-			}
-			results = append(results, res)
+			results = append(results, res...)
 		}
 	}
 
@@ -230,7 +231,5 @@ ForLoop:
 
 func (s *Service) Stop(ctx context.Context, _ *empty.Empty) (*empty.Empty, error) {
 	s.cancelCh <- struct{}{}
-	close(s.resultCh)
-	close(s.cancelCh)
 	return &empty.Empty{}, nil
 }
