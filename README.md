@@ -9,31 +9,37 @@ go get -u github.com/toydium/polytank/cmd/polytank-cli
 
 # Usage
 ## build plugins
-1. implements plugin code
-2. build by `-buildmode=plugin`
+1. implement plugin code
+2. build binary
 
 ### plugin code example
-```go
+```
 package main
 
 import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/toydium/polytank/pb"
+	"github.com/toydium/polytank/runner"
 )
 
-func Run(index, timeout uint32, ch chan []string, exMap map[string]string) error {
+type ExRunnerPlugin struct {
+}
+
+// implement method adopt to runner.Runner interface
+func (p *ExRunnerPlugin) Run(index, timeout uint32, exMap map[string]string) (res []*pb.Result, err error) {
 	rand.Seed(time.Now().UnixNano())
 
 	for i := 0; i < 5; i++ {
-		res := childRun(fmt.Sprintf("process_%d_%d", index, i+1))
-		ch <- res
+		r := p.child(fmt.Sprintf("process_%d_%d", index, i))
+		res = append(res, r)
 	}
-
-	return nil
+	return res, nil
 }
 
-func childRun(name string) []string {
+func (p *ExRunnerPlugin) child(name string) *pb.Result {
 	s := time.Now()
 
 	// some process
@@ -42,21 +48,22 @@ func childRun(name string) []string {
 
 	e := time.Now()
 
-	return []string{
-		// result name
-		name,
-		// success or failure
-		"true",
-		// start nano seconds
-		fmt.Sprint(s.UnixNano()),
-		// end nano seconds
-		fmt.Sprint(e.UnixNano()),
+	return &pb.Result{
+		ProcessName:        name,
+		IsSuccess:          true,
+		StartTimestampUsec: s.UnixNano(),
+		ElapsedTimeUsec:    e.UnixNano() - s.UnixNano(),
 	}
+}
+
+// call runner.Serve() with custom struct
+func main() {
+	runner.Serve(&ExRunnerPlugin{})
 }
 ```
 
 ## running by standalone mode
-`polytank -mode standalone -config config.yml -plugin plugin.so -port 33333`
+`polytank -mode standalone -config ./config.yml -plugin ./plugin -port 33333`
 
 ### config yaml example
 ```yaml
@@ -87,12 +94,11 @@ $ polytank -mode controller -port 33334
 polytank-cli -addr localhost:33334 add-worker localhost:33333
 
 # set plugin and execute configutation
-polytank-cli -addr localhost:33334 set-plugin plugin.so
+polytank-cli -addr localhost:33334 set-plugin ./plugin
 polytank-cli -addr localhost:33334 set-execute-request '{"concurrency":4,"timeoutSeconds":5,"seconds":10,"exMap":{"host":"front-envoy-blue","port":"8001"}}'
 
 # start execition and wait for result
-polytank-cli -addr localhost:33334 start (worker-uuid-1) (worker-uuid-2) ...
-polytank-cli -addr localhost:33334 wait (worker-uuid)
+polytank-cli -addr localhost:33334 start
 
 # abort all worker execution
 polytank-cli -addr localhost:33334 stop
