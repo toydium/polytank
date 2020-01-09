@@ -6,6 +6,7 @@ require (
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/golang/protobuf v1.3.2
 	github.com/google/uuid v1.1.1
+	github.com/hashicorp/go-hclog v0.0.0-20180709165350-ff2cf002a8dd
 	github.com/hashicorp/go-plugin v1.0.1
 	github.com/kr/pretty v0.2.0 // indirect
 	github.com/mattn/go-pubsub v0.0.0-20160821075316-7a151c7747cd

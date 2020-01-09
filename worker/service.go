@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/hashicorp/go-plugin"
 	"github.com/toydium/polytank/pb"
@@ -33,22 +35,34 @@ func (c *counter) Reset() {
 }
 
 type Service struct {
-	resultCh     chan []*pb.Result
-	cancelCh     chan struct{}
-	counter      counter
-	pluginClient *plugin.Client
-	runner       runner.Runner
+	resultCh       chan []*pb.Result
+	cancelCh       chan struct{}
+	counter        counter
+	pluginClient   *plugin.Client
+	runner         runner.Runner
+	logger         hclog.Logger
+	waitTickerMSec time.Duration
 }
 
-func NewService() pb.WorkerServer {
-	var c counter
+func NewService(waitTickerMSec time.Duration) *Service {
 	return &Service{
-		counter: c,
+		counter:        counter(0),
+		waitTickerMSec: waitTickerMSec,
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:            "polytank-worker",
+			Level:           hclog.Info,
+			Output:          os.Stdout,
+			JSONFormat:      true,
+			IncludeLocation: true,
+		}),
 	}
 }
 
 func (s *Service) Distribute(ctx context.Context, req *pb.DistributeRequest) (*empty.Empty, error) {
 	if err := s.generatePlugin(req.Plugin); err != nil {
+		return nil, err
+	}
+	if err := s.connectPlugin(); err != nil {
 		return nil, err
 	}
 	return &empty.Empty{}, nil
@@ -62,9 +76,6 @@ func (s *Service) generatePlugin(b []byte) error {
 		return fileErr(err)
 	}
 
-	if s.pluginClient != nil {
-		s.pluginClient.Kill()
-	}
 	pluginPath := filepath.Join(pluginsDir, "plugin")
 	f, err := os.Create(pluginPath)
 	if err != nil {
@@ -80,12 +91,22 @@ func (s *Service) generatePlugin(b []byte) error {
 		return fileErr(err)
 	}
 
+	return nil
+}
+
+func (s *Service) connectPlugin() error {
+	if s.pluginClient != nil && !s.pluginClient.Exited() {
+		s.pluginClient.Kill()
+	}
+
+	pluginPath := filepath.Join(pluginsDir, "plugin")
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: runner.HandshakeConfig(),
 		Plugins: map[string]plugin.Plugin{
 			"runner": &runner.Plugin{},
 		},
-		Cmd: exec.Command(pluginPath),
+		Cmd:    exec.Command(pluginPath),
+		Logger: s.logger,
 	})
 	s.pluginClient = client
 
@@ -151,7 +172,6 @@ ForLoop:
 
 	wg.Wait()
 	close(s.resultCh)
-	log.Print("end threadForTimeout")
 }
 
 func (s *Service) threadForCount(req *pb.ExecuteRequest, maxCount uint32) {
@@ -175,13 +195,15 @@ ForLoop:
 
 	wg.Wait()
 	close(s.resultCh)
-	log.Print("end threadForCount")
 }
 
 func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
 	defer func() {
 		<-ch
 	}()
+	if s.pluginClient.Exited() {
+		return
+	}
 	c := s.counter.Increment()
 	results, err := s.runner.Run(c, req.TimeoutSeconds, req.ExMap)
 	if err != nil {
@@ -192,7 +214,7 @@ func (s *Service) goroutineMethod(req *pb.ExecuteRequest, ch chan struct{}) {
 }
 
 func (s *Service) Wait(_ *empty.Empty, server pb.Worker_WaitServer) error {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(s.waitTickerMSec * time.Millisecond)
 
 	var results []*pb.Result
 	sendErr := status.New(codes.Internal, "send results error").Err()
@@ -232,4 +254,11 @@ ForLoop:
 func (s *Service) Stop(ctx context.Context, _ *empty.Empty) (*empty.Empty, error) {
 	s.cancelCh <- struct{}{}
 	return &empty.Empty{}, nil
+}
+
+func (s *Service) DisconnectPlugin() {
+	if s.pluginClient == nil {
+		return
+	}
+	s.pluginClient.Kill()
 }

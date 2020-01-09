@@ -11,6 +11,8 @@ services:
       - envoy-grpc-sample
     ports:
       - 33333:33333
+    environment:
+      - ROOT_PATH=/polytank
     depends_on:
       - worker-1
       - worker-2

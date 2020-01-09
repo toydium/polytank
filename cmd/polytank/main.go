@@ -28,21 +28,23 @@ func main() {
 		configPath string
 		port       string
 		mode       string
+		waitMSec   uint64
 	)
 	flag.StringVar(&pluginPath, "plugin", "", "plugin(.so) path")
 	flag.StringVar(&configPath, "config", "", "config(.yml) path")
 	flag.StringVar(&port, "port", "33333", "listen port number")
 	flag.StringVar(&mode, "mode", "standalone", "exec mode [worker|controller|standalone]")
+	flag.Uint64Var(&waitMSec, "wait", 1000, "send result wait ticker(msec)")
 	flag.Parse()
 
 	log.Printf("exec mode: %s", mode)
 	switch mode {
 	case "worker":
-		execWorker(port)
+		execWorker(port, waitMSec)
 	case "controller":
 		execController(port)
 	case "standalone":
-		execStandalone(port, pluginPath, configPath)
+		execStandalone(port, pluginPath, configPath, waitMSec)
 	default:
 		flag.Usage()
 	}
@@ -63,8 +65,11 @@ func serveAndWaitForSignal(l net.Listener, s *grpc.Server) {
 	log.Printf("shutdown gracefully")
 }
 
-func execWorker(port string) {
-	l, s, err := listenWorkerServer(port)
+func execWorker(port string, waitMsec uint64) {
+	ws := worker.NewService(time.Duration(waitMsec))
+	defer ws.DisconnectPlugin()
+
+	l, s, err := listenWorkerServer(port, ws)
 	if err != nil {
 		panic(err)
 	}
@@ -74,10 +79,9 @@ func execWorker(port string) {
 	serveAndWaitForSignal(l, s)
 }
 
-func listenWorkerServer(port string) (net.Listener, *grpc.Server, error) {
-	workerService := worker.NewService()
+func listenWorkerServer(port string, ws *worker.Service) (net.Listener, *grpc.Server, error) {
 	grpcServer := grpc.NewServer(grpc.MaxRecvMsgSize(1024 * 1024 * 100))
-	pb.RegisterWorkerServer(grpcServer, workerService)
+	pb.RegisterWorkerServer(grpcServer, ws)
 
 	addr := ":" + port
 	l, err := net.Listen("tcp", addr)
@@ -104,8 +108,11 @@ func execController(port string) {
 	serveAndWaitForSignal(l, grpcServer)
 }
 
-func execStandalone(port, pluginPath, configPath string) {
-	l, s, err := listenWorkerServer(port)
+func execStandalone(port, pluginPath, configPath string, waitMSec uint64) {
+	ws := worker.NewService(time.Duration(waitMSec))
+	defer ws.DisconnectPlugin()
+
+	l, s, err := listenWorkerServer(port, ws)
 	if err != nil {
 		panic(err)
 	}
