@@ -3,6 +3,7 @@ module github.com/toydium/polytank
 go 1.13
 
 require (
+	github.com/cornelk/hashmap v1.0.1
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/golang/protobuf v1.3.2
 	github.com/google/uuid v1.1.1

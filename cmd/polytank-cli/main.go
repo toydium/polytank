@@ -84,11 +84,12 @@ func main() {
 			}
 			uuids = append(uuids, uuid)
 		}
-		res, err := c.Start(ctx, &empty.Empty{})
+		res, err := c.Start(ctx, &pb.StartRequest{Uuids: uuids})
 		if err != nil {
 			panic(err)
 		}
 		log.Print(res.String())
+	case "wait":
 		req := &pb.ControllerWaitRequest{
 			Uuid: flag.Arg(1),
 		}

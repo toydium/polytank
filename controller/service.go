@@ -3,109 +3,106 @@ package controller
 import (
 	"context"
 	"io"
-	"log"
+	"os"
 	"sync"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
+	"github.com/hashicorp/go-hclog"
 	"github.com/mattn/go-pubsub"
 	"github.com/toydium/polytank/pb"
+	"github.com/toydium/polytank/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type Service struct {
-	mtx       *sync.RWMutex
-	workers   map[string]*worker
-	addresses map[string]string
+	workers   *worker.ControlledWorkers
 	execute   *pb.ExecuteRequest
 	ps        *pubsub.PubSub
+	responses *responses
+	logger    hclog.Logger
 }
 
-type worker struct {
-	mtx    *sync.RWMutex
-	info   *pb.WorkerInfo
-	conn   *grpc.ClientConn
-	client pb.WorkerClient
+type responses struct {
+	mtx   *sync.RWMutex
+	slice []*pb.ControllerWaitResponse
 }
 
-func (w *worker) setInfo(info *pb.WorkerInfo) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-	w.info = info
+func (r *responses) Reset() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.slice = []*pb.ControllerWaitResponse{}
 }
-func (w *worker) setClient(client pb.WorkerClient) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-	w.client = client
+func (r *responses) Add(c *pb.ControllerWaitResponse) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.slice = append(r.slice, c)
 }
-func (w *worker) getStatus() pb.WorkerInfo_Status {
-	w.mtx.RLock()
-	defer w.mtx.RUnlock()
-	return w.info.Status
-}
-func (w *worker) setStatus(status pb.WorkerInfo_Status) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
-	oldStatus := w.info.Status
-	if status == pb.WorkerInfo_SUCCESS || status == pb.WorkerInfo_FAILURE {
-		if oldStatus != pb.WorkerInfo_RUNNING {
-			return
+func (r *responses) Each(f func(c *pb.ControllerWaitResponse) error) error {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	for _, c := range r.slice {
+		if err := f(c); err != nil {
+			return err
 		}
 	}
-	w.info.Status = status
+	return nil
 }
 
 func NewService() *Service {
-	return &Service{
-		mtx:       &sync.RWMutex{},
-		workers:   map[string]*worker{},
-		addresses: map[string]string{},
-		ps:        pubsub.New(),
+	s := &Service{
+		workers: worker.NewControlledWorkers(),
+		ps:      pubsub.New(),
+		responses: &responses{
+			mtx:   &sync.RWMutex{},
+			slice: []*pb.ControllerWaitResponse{},
+		},
+		logger: hclog.New(&hclog.LoggerOptions{
+			Name:            "polytank-controller",
+			Level:           hclog.Debug,
+			Output:          os.Stdout,
+			JSONFormat:      true,
+			IncludeLocation: true,
+		}),
 	}
+
+	appendSliceFunc := func(res *pb.ControllerWaitResponse) {
+		s.responses.Add(res)
+	}
+	if err := s.ps.Sub(appendSliceFunc); err != nil {
+		s.logger.Error("cannot start subscription for WaitResponse")
+		return nil
+	}
+
+	return s
 }
 
-func (s *Service) connectWorker(addr string) (*worker, error) {
-	id, exists := s.addresses[addr]
-	if exists {
-		worker := s.workers[id]
-		worker.conn.Close()
-	}
+func (s *Service) connectWorker(addr string) (*worker.ControlledWorker, error) {
+	s.workers.Delete(addr)
 
 	conn, err := grpc.Dial(addr, grpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
-	client := pb.NewWorkerClient(conn)
 
-	if id == "" {
-		id = uuid.New().String()
-	}
-	worker := &worker{
-		mtx:  &sync.RWMutex{},
-		conn: conn,
-	}
-	worker.setInfo(&pb.WorkerInfo{
-		Uuid:    id,
+	info := &pb.WorkerInfo{
+		Uuid:    uuid.New().String(),
 		Address: addr,
 		Status:  pb.WorkerInfo_INITIALIZED,
-	})
-	worker.setClient(client)
-	s.addresses[addr] = id
-	s.workers[id] = worker
+	}
+	cw := worker.NewControlledWorker(info, conn)
+	s.workers.Set(cw)
 
-	return worker, nil
+	return cw, nil
 }
 
 func (s *Service) Status(ctx context.Context, _ *empty.Empty) (*pb.StatusResponse, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
 	var workers []*pb.WorkerInfo
-	for _, worker := range s.workers {
-		workers = append(workers, worker.info)
-	}
+	s.workers.Each(func(w *worker.ControlledWorker) {
+		workers = append(workers, w.Info())
+	})
 
 	return &pb.StatusResponse{
 		Workers: workers,
@@ -113,16 +110,13 @@ func (s *Service) Status(ctx context.Context, _ *empty.Empty) (*pb.StatusRespons
 }
 
 func (s *Service) AddWorker(ctx context.Context, req *pb.AddWorkerRequest) (*pb.AddWorkerResponse, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	var workers []*pb.WorkerInfo
 	for _, addr := range req.Addresses {
-		worker, err := s.connectWorker(addr)
+		cw, err := s.connectWorker(addr)
 		if err != nil {
 			return nil, status.Errorf(codes.Aborted, "cannot connect client: %s", addr)
 		}
-		workers = append(workers, worker.info)
+		workers = append(workers, cw.Info())
 	}
 
 	return &pb.AddWorkerResponse{
@@ -131,25 +125,22 @@ func (s *Service) AddWorker(ctx context.Context, req *pb.AddWorkerRequest) (*pb.
 }
 
 func (s *Service) SetExecuteRequest(ctx context.Context, req *pb.ExecuteRequest) (*empty.Empty, error) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	s.execute = req
 	return &empty.Empty{}, nil
 }
 
 func (s *Service) SetPlugin(ctx context.Context, req *pb.DistributeRequest) (*pb.DistributeAllResponse, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
 	var workers []*pb.WorkerInfo
-	for _, worker := range s.workers {
-		client := worker.client
+	if err := s.workers.EachWithErr(func(w *worker.ControlledWorker) error {
+		client := w.Client()
 		if _, err := client.Distribute(ctx, req); err != nil {
-			return nil, err
+			return err
 		}
-		worker.setStatus(pb.WorkerInfo_DISTRIBUTED)
-		workers = append(workers, worker.info)
+		w.SetStatus(pb.WorkerInfo_DISTRIBUTED)
+		workers = append(workers, w.Info())
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &pb.DistributeAllResponse{
@@ -157,57 +148,68 @@ func (s *Service) SetPlugin(ctx context.Context, req *pb.DistributeRequest) (*pb
 	}, nil
 }
 
-func (s *Service) Start(ctx context.Context, _ *empty.Empty) (*pb.StartResponse, error) {
+func (s *Service) Start(ctx context.Context, req *pb.StartRequest) (*pb.StartResponse, error) {
+	s.responses.Reset()
+
 	var workers []*pb.WorkerInfo
-	for i, w := range s.workers {
-		id := i
-		worker := w
-
-		workers = append(workers, worker.info)
-
-		st := worker.getStatus()
-		if st == pb.WorkerInfo_INITIALIZED || st == pb.WorkerInfo_RUNNING {
+	for _, id := range req.Uuids {
+		w := s.workers.GetByUUID(id)
+		if w == nil {
 			continue
 		}
-		worker.setStatus(pb.WorkerInfo_RUNNING)
+		workers = append(workers, w.Info())
 
-		client := worker.client
-		if _, err := client.Execute(ctx, s.execute); err != nil {
-			return nil, err
+		st := w.GetStatus()
+		if st == pb.WorkerInfo_RUNNING {
+			continue
+		}
+		if st == pb.WorkerInfo_INITIALIZED {
+			s.logger.Warn("not distributed worker", map[string]string{"uuid": id})
+			continue
 		}
 
-		go func() {
-			defer s.ps.Pub(worker.info)
+		client := w.Client()
+		if _, err := client.Execute(ctx, s.execute); err != nil {
+			s.logger.Error("cannot execute worker", map[string]string{"uuid": id})
+			w.SetStatus(pb.WorkerInfo_FAILURE)
+			continue
+		}
 
-			ctx := context.Background()
+		w.SetStatus(pb.WorkerInfo_RUNNING)
+		id := id
+		go func() {
+			mapForLogger := map[string]string{"uuid": id}
+
 			res, err := client.Wait(ctx, &empty.Empty{})
 			if err != nil {
-				log.Printf("wait[%s] err: %+v", id, err)
-				worker.setStatus(pb.WorkerInfo_FAILURE)
+				mapForLogger["err"] = err.Error()
+				s.logger.Error("error on wait", mapForLogger)
+				w.SetStatus(pb.WorkerInfo_FAILURE)
 				return
 			}
 			defer res.CloseSend()
-
 			for {
 				wr, err := res.Recv()
 				if err != nil {
 					if err == io.EOF {
 						break
 					}
-					log.Printf("wait recv[%s] err: %+v", id, err)
-					worker.setStatus(pb.WorkerInfo_FAILURE)
+					mapForLogger["err"] = err.Error()
+					s.logger.Error("error on wait recv", mapForLogger)
+					w.SetStatus(pb.WorkerInfo_FAILURE)
 					break
 				}
 				s.ps.Pub(&pb.ControllerWaitResponse{
 					Uuid:         id,
 					WaitResponse: wr,
 				})
+				w.SetCurrent(wr.Current)
 				if !wr.IsContinue {
 					break
 				}
 			}
-			worker.setStatus(pb.WorkerInfo_SUCCESS)
-			log.Printf("finish execution[%s]", id)
+			w.SetStatus(pb.WorkerInfo_SUCCESS)
+			s.logger.Debug("finish execution", map[string]string{"id": id})
 		}()
 	}
 
@@ -216,62 +218,68 @@ func (s *Service) Start(ctx context.Context, _ *empty.Empty) (*pb.StartResponse,
 	}, nil
 }
 
-func (s *Service) isFinishedAllWorkers() bool {
-	isFinish := true
-	for _, w := range s.workers {
-		st := w.getStatus()
-		if st != pb.WorkerInfo_SUCCESS && st != pb.WorkerInfo_FAILURE {
-			isFinish = false
-		}
-	}
-	return isFinish
-}
-
 func (s *Service) Wait(req *pb.ControllerWaitRequest, stream pb.Controller_WaitServer) error {
-	if s.isFinishedAllWorkers() {
-		return status.Error(codes.Unavailable, "not found running workers")
+	w := s.workers.GetByUUID(req.Uuid)
+	if w == nil {
+		return status.Errorf(codes.InvalidArgument, "cannot find worker: %s", req.Uuid)
 	}
 
-	sendFunc := func(res *pb.ControllerWaitResponse) {
-		if err := stream.Send(res); err != nil {
-			log.Printf("send err: %+v", err)
+	if err := s.responses.Each(func(c *pb.ControllerWaitResponse) error {
+		if c.Uuid != req.Uuid {
+			return nil
 		}
+		return stream.Send(c)
+	}); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
 	}
+
+	if w.GetStatus() != pb.WorkerInfo_RUNNING {
+		return nil
+	}
+
 	finishCh := make(chan bool, 1)
-	checkFinishFunc := func(res *pb.WorkerInfo) {
-		if s.isFinishedAllWorkers() {
+	sendFunc := func(c *pb.ControllerWaitResponse) {
+		if c.Uuid != req.Uuid {
+			return
+		}
+		if err := stream.Send(c); err != nil {
+			if err == io.EOF {
+				finishCh <- true
+				return
+			}
+			s.logger.Error("error on wait send", map[string]string{"err": err.Error()})
+		}
+		if w.GetStatus() != pb.WorkerInfo_RUNNING {
 			finishCh <- true
+			return
 		}
 	}
-	defer func() {
-		s.ps.Leave(sendFunc)
-		s.ps.Leave(checkFinishFunc)
-	}()
 
 	if err := s.ps.Sub(sendFunc); err != nil {
 		return err
 	}
-	if err := s.ps.Sub(checkFinishFunc); err != nil {
-		return err
-	}
+	defer s.ps.Leave(sendFunc)
 
-	log.Print("wait for finish all workers")
+	s.logger.Debug("wait for finish worker")
 	<-finishCh
 	return nil
 }
 
 func (s *Service) Stop(ctx context.Context, _ *empty.Empty) (*empty.Empty, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	for _, worker := range s.workers {
-		if worker.getStatus() != pb.WorkerInfo_RUNNING {
-			continue
+	if err := s.workers.EachWithErr(func(w *worker.ControlledWorker) error {
+		if w.GetStatus() != pb.WorkerInfo_RUNNING {
+			return nil
 		}
-		if _, err := worker.client.Stop(ctx, &empty.Empty{}); err != nil {
-			return nil, err
+		if _, err := w.Client().Stop(ctx, &empty.Empty{}); err != nil {
+			return err
 		}
-		worker.setStatus(pb.WorkerInfo_FAILURE)
+		w.SetStatus(pb.WorkerInfo_ABORTED)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &empty.Empty{}, nil
